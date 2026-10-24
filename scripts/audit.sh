@@ -47,6 +47,22 @@ echo "[3] Учётные записи"
 
 awk -F: '$3>=1000 && $3<65534 {printf " %s (uid=%s)\n",$1,$3}' /etc/passwd
 
+
+# Docker checks PR7
+echo "[5] Контейнеризация"
+
+check "Служба Docker активна" "active" \
+    "$(systemctl is-active docker 2>/dev/null || true)"
+
+check "PostgreSQL имеет статус healthy" "healthy" \
+    "$(docker inspect -f '{{.State.Health.Status}}' app-db-1 2>/dev/null || true)"
+
+check "Порты 5000 и 5432 не открыты наружу" "yes" \
+    "$(ss -tlnH | awk '$4 ~ /:(5000|5432)$/ && $4 !~ /^127[.]0[.]0[.]1:(5000|5432)$/ {bad=1} END {print bad?"no":"yes"}')"
+
+check "Права файла .env равны 600" "600" \
+    "$(stat -c '%a' "$HOME/app/.env" 2>/dev/null || true)"
+
 echo "Пройдено: $PASS, не пройдено: $FAIL"
 
 [[ $FAIL -eq 0 ]] && exit 0 || exit 1
