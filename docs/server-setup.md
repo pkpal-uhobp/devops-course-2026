@@ -132,3 +132,140 @@ sudo ufw status verbose
 
 Текущую работающую машину без необходимости не восстанавливать из снимка.
 
+
+## 9. Контейнеризация
+
+### 9.1. Установка Docker
+
+Docker Engine установлен на Ubuntu Server 24.04
+из официального APT-репозитория Docker.
+
+Docker Engine: 29.9.2.
+Docker Compose: v5.6.1.
+
+Служба docker.service активна и запускается
+через systemd.
+
+Пользователь devops входит в группу docker
+и может запускать контейнеры без sudo.
+Группа docker предоставляет административные
+возможности, поэтому доступ к ней ограничен.
+
+### 9.2. Расположение проекта
+
+Каталог приложения на сервере:
+/home/devops/app/
+
+Исходный код хранится в репозитории:
+https://github.com/pkpal-uhobp/devops-course-2026
+
+Рабочая ветка практической работы:
+feature/docker
+
+Исходники доставляются из WSL через rsync:
+
+rsync -avz --delete --exclude=.env app/ devops:app/
+
+Файл .env исключается из передачи.
+
+### 9.3. Переменные окружения
+
+Файл с параметрами PostgreSQL:
+/home/devops/app/.env
+
+Владелец: devops.
+Права: 600.
+
+Пароль создан командой openssl rand -hex 16.
+Настоящий пароль не хранится в GitHub.
+
+В репозиторий включён только шаблон
+app/.env.example без настоящего пароля.
+
+### 9.4. Docker Compose
+
+Файл конфигурации:
+/home/devops/app/docker-compose.yml
+
+Сервисы:
+- app: Flask, Gunicorn, образ devops-app:1.0;
+- db: PostgreSQL, образ postgres:16-alpine.
+
+Оба сервиса подключены к сети app_backend.
+Внутри сети приложение обращается к СУБД
+по имени db.
+
+Готовность PostgreSQL проверяется командой
+pg_isready через healthcheck.
+
+Приложение запускается после перехода
+СУБД в состояние healthy.
+
+### 9.5. Порты и безопасность
+
+Flask опубликован только по адресу:
+127.0.0.1:5000
+
+Порт PostgreSQL 5432 наружу не публикуется.
+
+Процесс Flask внутри контейнера работает
+от имени непривилегированного пользователя app.
+
+### 9.6. Хранение данных
+
+Именованный том PostgreSQL:
+app_db_data
+
+Команда docker compose down удаляет контейнеры,
+но сохраняет данные в томе.
+
+Команда docker compose down -v удаляет также том
+и приводит к потере данных PostgreSQL.
+
+Сохранность данных проверена счётчиком посещений:
+до пересоздания контейнеров Visits: 4,
+после пересоздания Visits: 5.
+
+После удаления тома счётчик начался с Visits: 1.
+
+### 9.7. Обратный прокси Nginx
+
+Конфигурационный файл:
+/etc/nginx/sites-available/devops-site
+
+Статический сайт:
+https://devops.local/
+
+Контейнерное приложение:
+https://devops.local/app/
+
+Маршрут /app/ передаётся через proxy_pass
+на http://127.0.0.1:5000/.
+
+Nginx принимает HTTPS-соединение и передаёт
+приложению заголовки Host, X-Real-IP,
+X-Forwarded-For и X-Forwarded-Proto.
+
+При остановке контейнера app сервер возвращает
+502 Bad Gateway. Причина фиксируется в
+/var/log/nginx/devops-site.error.log.
+
+### 9.8. Управление контейнерами
+
+Запуск проекта:
+cd ~/app && docker compose up -d --wait
+
+Проверка состояния:
+docker compose ps
+
+Просмотр журналов:
+docker compose logs
+
+Остановка приложения:
+docker compose stop app
+
+Запуск приложения:
+docker compose start app
+
+Обновление проекта:
+docker compose up -d --build
